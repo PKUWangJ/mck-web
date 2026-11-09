@@ -1,0 +1,8 @@
+# Local service runtime
+server/.venv/
+server/.env
+__pycache__/
+*.py[cod]
+
+# Editor / OS noise
+.DS_Store

@@ -1,0 +1,20 @@
+[Unit]
+Description=Marchkov web helper local API
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 改成运行服务的本机用户
+User=wj
+# 改成项目实际路径
+WorkingDirectory=/home/wj/mckhelper/mck-web/server
+EnvironmentFile=/home/wj/mckhelper/mck-web/server/.env
+ExecStart=/home/wj/mckhelper/mck-web/server/.venv/bin/python /home/wj/mckhelper/mck-web/server/app.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
