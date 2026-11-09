@@ -156,10 +156,35 @@ def normalize_datetime(value: Any) -> str:
     return normalize_time(value)
 
 
+def first_period_id(raw: dict[str, Any]) -> str:
+    """Return the per-period id needed by the cancel endpoint.
+
+    ``my-list-time`` rows are not consistent here: some carry a top-level
+    ``hall_appointment_data_id`` (what Marchkov's ride page reads), others
+    only expose the periods as ``periodList`` / ``period_list`` with ``id``
+    or ``data_id`` entries (what Marchkov's bus list and the wproc pages
+    read).  Without this fallback the cancel button is hidden even though
+    the reservation is active.
+    """
+    periods = raw.get("periodList")
+    if not isinstance(periods, list) or not periods:
+        periods = raw.get("period_list")
+    if not isinstance(periods, list):
+        return ""
+    for period in periods:
+        if not isinstance(period, dict):
+            continue
+        value = period.get("id") or period.get("data_id")
+        if value:
+            return str(value)
+    return ""
+
+
 def reservation_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    data_id = raw.get("hall_appointment_data_id") or first_period_id(raw)
     return {
         "id": str(raw.get("id", "")),
-        "data_id": str(raw.get("hall_appointment_data_id", "")),
+        "data_id": str(data_id or ""),
         "route": raw.get("resource_name", ""),
         "time": normalize_datetime(raw.get("appointment_tim", "")),
         "status": raw.get("status_name", ""),

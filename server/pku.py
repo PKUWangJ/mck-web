@@ -163,18 +163,45 @@ class PkuClient:
 
     # ------------------------------------------------------------------- APIs
     def my_reservations(self) -> list[dict[str, Any]]:
-        payload = self._request(
-            "GET",
-            "/site/reservation/my-list-time",
-            params={
-                "p": 1,
-                "page_size": 0,
-                "status": 2,
-                "sort_time": "true",
-                "sort": "asc",
-            },
-        )
-        return list((payload.get("d") or {}).get("data") or [])
+        """Return the currently reserved rides.
+
+        wproc's "我的预约" page no longer shows its list when the request
+        leaves ``date_sta``/``date_end`` unset; Marchkov's bus-list page
+        always sends an explicit window.  Do the same here instead of
+        depending on the server-side default.
+        """
+        today = dt.datetime.now(TZ).date()
+        params = {
+            "p": 1,
+            "page_size": 0,
+            "status": 2,
+            "sort_time": "true",
+            "sort": "asc",
+            "date_sta": today.isoformat(),
+            "date_end": (today + dt.timedelta(days=6)).isoformat(),
+        }
+        try:
+            payload = self._request(
+                "GET", "/site/reservation/my-list-time", params=params
+            )
+            rows = list((payload.get("d") or {}).get("data") or [])
+        except PkuError:
+            rows = []
+
+        if rows:
+            return rows
+
+        # Same fallback as the mobile "我的预约" page: ask for every status
+        # inside the window and keep only active reservations (status 7).
+        params.update({"status": 0, "sort": "desc"})
+        try:
+            payload = self._request(
+                "GET", "/site/reservation/my-list-time", params=params
+            )
+        except PkuError:
+            return []
+        rows = list((payload.get("d") or {}).get("data") or [])
+        return [row for row in rows if str(row.get("status")) == "7"]
 
     def list_buses(self, date: str) -> list[dict[str, Any]]:
         payload = self._request(
