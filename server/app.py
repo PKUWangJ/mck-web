@@ -231,7 +231,9 @@ def api_logout():
 def api_qr():
     session = current_session()
     client: PkuClient = session["client"]
-    day = request.args.get("date") or today()
+    day = normalize_date(request.args.get("date")) or today()
+    scope = str(request.args.get("scope") or "today").strip().lower()
+    include_all = scope == "all"
 
     try:
         raw_items = client.my_reservations()
@@ -242,7 +244,17 @@ def api_qr():
     seen: set[str] = set()
     for raw in raw_items:
         info = reservation_payload(raw)
-        if not info["id"] or not info["time"].startswith(day):
+        info_day = normalize_date(info["time"])
+        if not info["id"] or not info_day:
+            continue
+        # The QR tab asks for "all": every reservation from today onwards, so
+        # several boarding codes can live on one page.  Past days are dropped
+        # because their codes can no longer be used.  The default stays on
+        # today's codes for older clients and direct API calls.
+        if include_all:
+            if info_day < today():
+                continue
+        elif info_day != day:
             continue
         if info["id"] in seen:
             continue
@@ -271,6 +283,7 @@ def api_qr():
         {
             "updated": now().isoformat(timespec="seconds"),
             "date": day,
+            "scope": "all" if include_all else "today",
             "items": items,
         }
     )

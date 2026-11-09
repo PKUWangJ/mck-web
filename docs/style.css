@@ -311,6 +311,18 @@ svg {
   text-overflow: ellipsis;
 }
 
+.qr-date {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.qr-date + .qr-time {
+  margin-top: 4px;
+}
+
 .qr-time {
   text-align: center;
   font-size: 42px;
@@ -356,6 +368,10 @@ svg {
 
 .card-actions .button {
   flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .footnote {

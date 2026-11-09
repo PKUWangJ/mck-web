@@ -1,6 +1,6 @@
 # 乘车码（个人自用网页版）
 
-手机上打开网页或主屏幕图标，直接看到当天预约班车的乘车二维码。前端是纯静态页面，可挂在 GitHub Pages；账号登录和取码只在你自己的常开机器上运行。
+手机上打开网页或主屏幕图标，直接看到已预约班车的乘车二维码（最近一班默认展开，其余班次可逐个显示或隐藏）。前端是纯静态页面，可挂在 GitHub Pages；账号登录和取码只在你自己的常开机器上运行。
 
 GitHub 仓库里只有静态前端和本机服务代码，不放账号、密码、`.env` 或任何登录凭据；Pages 只发布 `docs/`，也不使用 GitHub Actions 登录或取码。
 
@@ -196,6 +196,26 @@ journalctl -u mck-helper -f
 
 - Debian、Ubuntu、树莓派系统先安装 venv 模块：`sudo apt install python3-venv`，再重新执行第 1 步。
 
+**Windows 启动时报 `WinError 10048` 或 `WinError 10013`**
+
+- `10048`：端口已被占用。用 `netstat -ano | findstr :8787` 找到进程，关掉旧的 Python 实例或换端口。
+- `10013`：端口被占用，或落在 Windows 的保留端口段里（Hyper-V、WSL2、Docker 常见）。用 `netsh int ipv4 show excludedportrange protocol=tcp` 查看。
+- 在 `server\.env` 里改 `PORT=18080`，重启服务；如果用了 Tailscale Serve，命令也改成 `tailscale serve --bg 18080`。
+
+**`tailscale serve` 提示 `Serve is not enabled on your tailnet`**
+
+- Serve 是 tailnet 级别的功能，首次使用需要在管理后台开启。打开提示里的 `https://login.tailscale.com/f/serve?node=...` 链接，用同一个 Tailscale 账号登录并点击启用，然后重新执行 `tailscale serve --bg 8787`。
+- 同时确认管理后台的 DNS 页面已启用 HTTPS Certificates，否则签发 `设备名.xxx.ts.net` 证书会失败。
+- 末尾的 `lost connection to tailscaled: context canceled` 是命令退出时的提示，可以忽略。
+
+**iPhone 在中国大陆 App Store 搜不到 Tailscale**
+
+- 国区 App Store 没有上架 Tailscale，搜索结果里没有这个应用，与网络无关。完整步骤见 [TAILSCALE-IOS-CN.md](TAILSCALE-IOS-CN.md)。
+- 临时办法：从国区 App Store 安装 TestFlight，打开 Tailscale 官方测试链接 `https://testflight.apple.com/join/tLcYLZJV`，接受邀请后安装。测试版会过期，也可能满员。
+- 长期办法：注册一个美区或港区 Apple ID，只在“设置 → 你的名字 → 媒体与购买项目”里退出并登录海外账号，**不要登录 iCloud**；在 App Store 下载 Tailscale 后切回原账号。后续更新需要再切到海外账号。不要使用他人共享的 Apple ID，也不要安装描述文件或企业签名包。
+- 国内到 Tailscale 控制服务器和 DERP 中继可能较慢：`tailscale status` 里显示 `direct` 是直连，显示 `relay` 是走海外中继。取码流量很小，通常仍然可用。
+- 如果 GitHub Pages 在国内打不开，手机可以直接访问 `https://设备名.你的tailnet.ts.net/`，本机服务也会提供同一套页面，不必经过 GitHub Pages。
+
 **提示“连不上本机服务”**
 
 - `tailscale status` 确认手机和电脑在线且在同一 tailnet。
@@ -231,6 +251,8 @@ journalctl -u mck-helper -f
 
 ```
 mck-web/
+├── README.md
+├── TAILSCALE-IOS-CN.md    # 国区 iPhone 安装 Tailscale 的步骤
 ├── docs/                  # 静态前端，GitHub Pages 的发布目录
 │   ├── index.html
 │   ├── app.js

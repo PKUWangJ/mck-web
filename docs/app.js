@@ -54,6 +54,7 @@
     qr: null,
     qrLoading: false,
     qrError: '',
+    qrShown: {},
     buses: [],
     busesDate: '',
     busesLoadedDate: '',
@@ -125,6 +126,15 @@
     const value = String(text || '');
     const match = value.match(/(\d{2}:\d{2})/);
     return match ? match[1] : '';
+  }
+
+  function qrWhenText(text) {
+    const day = String(text || '').slice(0, 10);
+    const time = timePart(text);
+    if (day && day !== ymd(new Date())) {
+      return `${monthDay(text)} ${time}`.trim();
+    }
+    return time;
   }
 
   function clock(iso) {
@@ -262,6 +272,7 @@
           state.authMessage = '登录已失效，请重新登录';
           clearAuth();
           state.qr = null;
+          state.qrShown = {};
           state.buses = [];
           state.reservations = [];
           state.history = null;
@@ -623,6 +634,7 @@
       if (rawBase !== previousBase) remove(KEYS.lastQr);
       state.tab = 'qr';
       state.qr = null;
+      state.qrShown = {};
       hydrateQrCache();
       render();
       loadQr();
@@ -669,6 +681,7 @@
     clearAuth();
     state.authMessage = '';
     state.qr = null;
+    state.qrShown = {};
     state.buses = [];
     state.reservations = [];
     state.history = null;
@@ -707,6 +720,7 @@
       items: Array.isArray(payload.items) ? payload.items : [],
       updated: payload.updated || '',
       date: payload.date || ymd(new Date()),
+      scope: payload.scope || 'today',
       cached,
       cachedAt: options.cachedAt || 0,
       fetchedAt: cached ? 0 : Date.now(),
@@ -720,6 +734,7 @@
         savedAt: Date.now(),
         username: state.username,
         date: payload.date || ymd(new Date()),
+        scope: payload.scope || 'today',
         updated: payload.updated || '',
         items: payload.items || [],
       })
@@ -736,7 +751,7 @@
     if (state.tab === 'qr') renderMain();
 
     try {
-      const payload = await api('/api/qr');
+      const payload = await api('/api/qr?scope=all');
       if (reqId !== state.req.qr) return;
       setQrData(payload);
       writeQrCache(payload);
@@ -805,7 +820,7 @@
       nodes.push(
         emptyState(
           '🚌',
-          '今天还没有乘车码',
+          '还没有可显示的乘车码',
           '预约班车后，乘车二维码会显示在这里。',
           '去预约班车',
           () => switchTab('buses')
@@ -815,13 +830,11 @@
     }
 
     let nextId = '';
-    if (data.date === todayText) {
-      const now = nowText();
-      const upcoming = data.items.find(
-        (item) => String(item.time || '').slice(0, 16) >= now
-      );
-      if (upcoming) nextId = upcoming.id;
-    }
+    const now = nowText();
+    const upcoming = data.items.find(
+      (item) => String(item.time || '').slice(0, 16) >= now
+    );
+    if (upcoming) nextId = upcoming.id;
 
     const ordered = [...data.items].sort((a, b) => {
       if (a.id === nextId) return -1;
@@ -829,7 +842,18 @@
       return String(a.time || '').localeCompare(String(b.time || ''));
     });
     ordered.forEach((item) => {
-      nodes.push(renderQrCard(item, item.id === nextId));
+      // The nearest ride is open by default; every other reservation can be
+      // revealed or hidden independently, and the choice survives re-renders.
+      const visible =
+        state.qrShown[item.id] === undefined
+          ? item.id === nextId
+          : Boolean(state.qrShown[item.id]);
+      nodes.push(
+        renderQrCard(item, item.id === nextId, visible, () => {
+          state.qrShown[item.id] = !visible;
+          renderMain();
+        })
+      );
     });
 
     if (data.updated) {
@@ -843,10 +867,12 @@
     return nodes;
   }
 
-  function renderQrCard(item, isNext) {
+  function renderQrCard(item, isNext, visible, onToggle) {
     const card = el('article', {
       class: `qr-card${isNext ? ' is-next' : ''}`,
     });
+    const itemDay = String(item.time || '').slice(0, 10);
+    const todayText = ymd(new Date());
 
     card.append(
       el(
@@ -857,44 +883,58 @@
           text: isNext ? '最近一班' : item.code_type || '乘车码',
         }),
         el('span', { class: 'route', text: item.route || '班车' })
-      ),
+      )
+    );
+
+    if (itemDay && itemDay !== todayText) {
+      card.append(
+        el('div', {
+          class: 'qr-date',
+          text: `${monthDay(item.time)} ${weekdayOf(itemDay)}`.trim(),
+        })
+      );
+    }
+
+    card.append(
       el('div', {
         class: 'qr-time',
         text: timePart(item.time) || '--:--',
       })
     );
 
-    if (item.qr) {
-      const image = el('img', {
-        class: 'qr-img',
-        src: item.qr,
-        alt: `${timePart(item.time) || ''} 乘车二维码`,
-        width: 260,
-        height: 260,
-      });
-      card.append(
-        el(
-          'button',
-          {
-            class: 'qr-wrap',
-            type: 'button',
-            'aria-label': '全屏显示二维码',
-            onclick: () => openFullscreen(item),
-          },
-          image
-        )
-      );
-    } else {
-      card.append(
-        el('div', {
-          class: 'qr-wrap qr-error',
-          text: item.error || '二维码加载失败，请稍后刷新',
-        })
-      );
+    if (visible) {
+      if (item.qr) {
+        const image = el('img', {
+          class: 'qr-img',
+          src: item.qr,
+          alt: `${timePart(item.time) || ''} 乘车二维码`,
+          width: 260,
+          height: 260,
+        });
+        card.append(
+          el(
+            'button',
+            {
+              class: 'qr-wrap',
+              type: 'button',
+              'aria-label': '全屏显示二维码',
+              onclick: () => openFullscreen(item),
+            },
+            image
+          )
+        );
+      } else {
+        card.append(
+          el('div', {
+            class: 'qr-wrap qr-error',
+            text: item.error || '二维码加载失败，请稍后刷新',
+          })
+        );
+      }
     }
 
     const actions = el('div', { class: 'card-actions' });
-    if (item.qr) {
+    if (visible && item.qr) {
       actions.append(
         el('button', {
           class: 'button primary',
@@ -904,6 +944,15 @@
         })
       );
     }
+    actions.append(
+      el('button', {
+        class: `button ${visible ? 'ghost' : 'primary'}`,
+        type: 'button',
+        text: visible ? '隐藏二维码' : '显示二维码',
+        'aria-expanded': visible ? 'true' : 'false',
+        onclick: onToggle,
+      })
+    );
     if (item.data_id) {
       actions.append(
         el('button', {
@@ -935,6 +984,21 @@
         String(item.route || '').trim() === String(slot.route || '').trim() &&
         String(item.time || '').slice(0, 16) === key
     );
+  }
+
+  // 新燕园 ↔ 燕园 are the routes used most often, so their groups go first:
+  // 新燕园→燕园, then 燕园→新燕园, then other cross-campus routes (e.g. via
+  // 200号校区), then everything else.
+  function busRouteRank(route) {
+    const name = String(route || '').trim();
+    if (!name.includes('新燕园')) return 3;
+    // "燕园" is a substring of "新燕园"; strip the longer name first so the
+    // check really means "also mentions the main campus".
+    const rest = name.split('新燕园').join('');
+    if (!rest.includes('燕园')) return 3;
+    if (name.startsWith('新燕园')) return 0;
+    if (name.startsWith('燕园')) return 1;
+    return 2;
   }
 
   function renderBuses() {
@@ -1011,7 +1075,15 @@
       groups.get(slot.route).push(slot);
     });
 
-    groups.forEach((routeSlots, route) => {
+    const ranked = [...groups.entries()].map(([route, routeSlots], index) => ({
+      route,
+      routeSlots,
+      index,
+      rank: busRouteRank(route),
+    }));
+    ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
+
+    ranked.forEach(({ route, routeSlots }) => {
       const group = el(
         'section',
         { class: 'bus-group' },
@@ -1590,6 +1662,7 @@
       remove(KEYS.lastQr);
       state.authMessage = '服务地址已更改，请重新登录';
       state.qr = null;
+      state.qrShown = {};
       state.buses = [];
       state.history = null;
       render();
@@ -1647,7 +1720,7 @@
       }),
       el('div', {
         class: 'fullscreen-meta',
-        text: `${item.route || '班车'} ${timePart(item.time)}`.trim(),
+        text: `${item.route || '班车'} ${qrWhenText(item.time)}`.trim(),
       }),
       el('img', {
         class: 'fullscreen-qr',
