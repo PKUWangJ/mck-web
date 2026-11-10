@@ -1001,6 +1001,24 @@
     return 2;
   }
 
+  // On today's list, keep only the most recent already-departed bus per
+  // route.  Everything older is just history and makes the timetable long;
+  // the one retained row still gives a reference for "the last bus left".
+  function keepLatestDeparted(slots) {
+    const now = nowText();
+    const latest = new Map();
+    slots.forEach((slot) => {
+      const departure = `${slot.date} ${slot.time}`.slice(0, 16);
+      if (departure >= now) return;
+      const current = latest.get(slot.route);
+      if (!current || departure > current) latest.set(slot.route, departure);
+    });
+    return slots.filter((slot) => {
+      const departure = `${slot.date} ${slot.time}`.slice(0, 16);
+      return departure >= now || departure === latest.get(slot.route);
+    });
+  }
+
   function renderBuses() {
     const nodes = [];
     const todayString = ymd(new Date());
@@ -1069,8 +1087,11 @@
       return nodes;
     }
 
+    const visibleSlots =
+      state.busesDate === todayString ? keepLatestDeparted(slots) : slots;
+
     const groups = new Map();
-    slots.forEach((slot) => {
+    visibleSlots.forEach((slot) => {
       if (!groups.has(slot.route)) groups.set(slot.route, []);
       groups.get(slot.route).push(slot);
     });
